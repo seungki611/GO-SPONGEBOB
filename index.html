@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스폰지밥 배구 - Bikini Bottom Cup</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Jua', sans-serif;
+            background-color: #0088ff;
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+            user-select: none;
+        }
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            background: linear-gradient(to bottom, #87CEEB 0%, #E0F6FF 70%, #F4A460 70%, #D2B48C 100%);
+            border: 8px solid #FFD700;
+            border-radius: 24px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+        }
+        canvas { display: block; }
+        .ui-overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.75);
+            z-index: 100;
+            backdrop-filter: blur(4px);
+        }
+        .hidden { display: none !important; }
+        .menu-btn {
+            background: #FFD700;
+            color: #333;
+            padding: 12px 36px;
+            margin: 8px;
+            border-radius: 99px;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: 4px solid #FFF;
+            box-shadow: 0 4px 0 #b89b00;
+        }
+        .menu-btn:hover {
+            transform: scale(1.05) translateY(-2px);
+            background: #FFA500;
+            box-shadow: 0 6px 0 #8c5a00;
+        }
+        .char-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-top: 15px;
+        }
+        .char-card {
+            width: 90px;
+            height: 110px;
+            background: #2a2a2a;
+            border: 3px solid #555;
+            border-radius: 12px;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .char-card img { width: 70%; height: 60%; object-fit: contain; }
+        .char-card.p1-selected { border-color: #3b82f6; background: #1e3a8a; box-shadow: 0 0 15px #3b82f6; }
+        .char-card.p2-selected { border-color: #ef4444; background: #7f1d1d; box-shadow: 0 0 15px #ef4444; }
+        
+        .ult-status-container {
+            position: absolute;
+            top: 20px; width: 100%;
+            display: flex; justify-content: space-between;
+            padding: 0 50px; z-index: 50; pointer-events: none;
+        }
+        .ult-bar {
+            width: 200px; height: 25px;
+            background: rgba(0,0,0,0.5);
+            border: 2px solid white; border-radius: 15px;
+            overflow: hidden; position: relative;
+        }
+        .ult-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #ff0, #f80); transition: width 0.3s; }
+        .ult-ready-text { position: absolute; width: 100%; text-align: center; font-size: 12px; top: 2px; color: white; text-shadow: 1px 1px 2px black; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- UI Status Bars -->
+    <div class="ult-status-container hidden" id="in-game-ui">
+        <div class="flex flex-col items-start">
+            <div class="text-sm mb-1 text-blue-200">1P 필살기 (Z)</div>
+            <div class="ult-bar"><div id="p1-ult-fill" class="ult-fill"></div><div id="p1-ult-text" class="ult-ready-text">CHARGE...</div></div>
+        </div>
+        <div class="flex flex-col items-end">
+            <div class="text-sm mb-1 text-red-200">2P 필살기 (Enter)</div>
+            <div class="ult-bar"><div id="p2-ult-fill" class="ult-fill"></div><div id="p2-ult-text" class="ult-ready-text">CHARGE...</div></div>
+        </div>
+    </div>
+
+    <!-- UI Panels -->
+    <div id="main-menu" class="ui-overlay">
+        <h1 class="text-6xl mb-10 text-yellow-400 drop-shadow-[0_5px_0_rgba(184,155,0,1)]">스폰지밥 배구</h1>
+        <div class="menu-btn" onclick="showCharSelect()">게임 시작</div>
+        <div class="menu-btn" onclick="showInfo()">설명 및 필살기</div>
+        <div class="bg-blue-900/50 p-4 rounded-xl mt-6">
+            <label class="block text-center mb-2 text-sm">전체 게임 속도</label>
+            <input type="range" id="speed-slider" min="0.4" max="1.2" step="0.1" value="0.8" class="w-48 accent-yellow-400">
+        </div>
+    </div>
+
+    <div id="char-select" class="ui-overlay hidden">
+        <h2 class="text-4xl mb-6 text-yellow-300">캐릭터 선택</h2>
+        <div class="flex gap-24 mb-6">
+            <div id="p1-status" class="text-blue-400 text-2xl">1P: 선택 중... (WASD+Z)</div>
+            <div id="p2-status" class="text-red-400 text-2xl">2P: 선택 중... (방향키+Enter)</div>
+        </div>
+        <div id="char-grid" class="char-grid"></div>
+    </div>
+
+    <div id="pause-overlay" class="ui-overlay hidden">
+        <h2 class="text-6xl text-white mb-10">일시 정지</h2>
+        <p class="mb-6 text-xl">계속하려면 ESC를 누르세요</p>
+        <div class="menu-btn" onclick="backToMenu()">메인 메뉴로</div>
+    </div>
+
+    <div id="info-screen" class="ui-overlay hidden">
+        <div class="bg-white text-gray-800 p-8 rounded-3xl max-w-xl">
+            <h3 class="text-2xl font-bold mb-4 border-b-2 border-yellow-400 pb-2">조작 및 필살기</h3>
+            <p class="mb-2"><strong>이동:</strong> 1P (WASD) / 2P (방향키)</p>
+            <p class="mb-2"><strong>스파이크/리시브:</strong> 1P (Z) / 2P (Enter)</p>
+            <p class="mb-2"><strong>필살기:</strong> 게이지 충전 시 공격 시 자동 발동</p>
+            <p class="mb-4 text-blue-600 font-bold">득점 시 슬로우 모션이 연출되며 1초 후 재시작됩니다.</p>
+            <div id="skill-list" class="text-sm space-y-1 mb-6 max-h-40 overflow-y-auto"></div>
+            <div class="menu-btn mx-auto" onclick="hideInfo()">닫기</div>
+        </div>
+    </div>
+
+    <div id="game-over" class="ui-overlay hidden">
+        <h2 id="winner-text" class="text-6xl mb-10 text-yellow-400">승리!</h2>
+        <div class="menu-btn" onclick="backToMenu()">메인 메뉴로</div>
+    </div>
+
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+</div>
+
+<script>
+const CHARACTERS = [
+    { id: 'spongebob', name: '스폰지밥', img: 'https://i.namu.wiki/i/izVXkClWRy9-s5DAkC_lGo3za4Zy9seGH1V6AM0qZJzsckE9eWe6-Hp-1OvJm_DkVv7BL7U0Ar7QB89ApaklkQ.webp', color: '#ffea00', w: 90, h: 100, speed: 6.0, jump: 18, skill: '비눗방울 슛', targetUlt: 5, ultType: 'count' },
+    { id: 'patrick', name: '뚱이', img: 'https://i.namu.wiki/i/Q6BIqhZWqyhBAFmeZoOWIFO2Ttw1X0xOimLTY0WyohXIadIRIoxaAWc6yoggyEKohkI3aDCoKXsBlp6rvL-MFg.webp', color: '#ff9999', w: 120, h: 120, speed: 6.0, jump: 18, skill: '가라테 촙', targetUlt: 3, ultType: 'lost' },
+    { id: 'squidward', name: '징징이', img: 'https://i.namu.wiki/i/S-62hz9SQ6mw4JX9XRp39tOP3jHuv48gVtlzHiBkYoXTgKtSY_0lnqNcQVlZ1s2H2KvoVCDVGPGtKmckZmDrNA.webp', color: '#99ccff', w: 80, h: 140, speed: 6.0, jump: 18, skill: '클라리넷 소음', targetUlt: 3, ultType: 'receive' },
+    { id: 'sandy', name: '다람이', img: 'https://i.namu.wiki/i/jaPtgPSToURRGt9r7p_bTXClXcpHrLx1m81Fs9zfCSrZ0FJG0E3uZoQ29sKGVpuTDbfQPXvq-34eKFIbLQFd-A.webp', color: '#ffffff', w: 85, h: 95, speed: 6.0, jump: 18, skill: '도토리 로켓', targetUlt: 5, ultType: 'rally' },
+    { id: 'krabs', name: '집게사장', img: 'https://i.namu.wiki/i/yjym2GZ1SnvwytkONi7-wN2pEwECQ_84pbtpAmZu67r42lEELldphbJAaHirt3J7JerSVWJVCYhUj0uhmPwPZg.webp', color: '#f00', w: 110, h: 115, speed: 6.0, jump: 18, skill: '동전 던지기', targetUlt: 2, ultType: 'perfect' },
+    { id: 'plankton', name: '플랑크톤', img: 'https://i.namu.wiki/i/4ogJmNJ7gDE7lXE2GhOEotxBu85fEgteoKczyTuFnnmb60Cgl0CQsTKUFXkNCAQfFLH_dlzmMtGQYbqXmtgsOw.webp', color: '#060', w: 50, h: 65, speed: 6.0, jump: 18, skill: '비법 훔치기', targetUlt: 1, ultType: 'counter' },
+    { id: 'karen', name: '카렌', img: 'https://i.namu.wiki/i/wzf9C1AK2m-Izt9sdjInCrS-Papcg-NLExug5HoLWmyz5Gmuo4KLtjp3S__oRVKHX_b1i6m8nXSEt4wBMGxZ7w.webp', color: '#99b', w: 95, h: 130, speed: 6.0, jump: 18, skill: '레이저 빔', targetUlt: 300, ultType: 'stay' }
+];
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let gameSpeed = 0.8;
+let gameState = 'MENU'; 
+let p1Sel = 0, p2Sel = 1, p1Ready = false, p2Ready = false;
+let score = [0, 0], lastWinner = 1, ball, player1, player2;
+let keys = {}, ceremonyTimer = 0, scoreWaitTimer = 0, winnerObj = null, rallyCount = 0;
+let sparks = [];
+
+const images = {};
+CHARACTERS.forEach(c => { images[c.id] = new Image(); images[c.id].src = c.img; });
+const ballImg = new Image(); ballImg.src = 'https://www.nassau.co.kr/files/goods/20246317550_2.jpg';
+
+class Spark {
+    constructor(x, y, color) {
+        this.x = x; this.y = y;
+        this.vx = (Math.random() - 0.5) * 15;
+        this.vy = (Math.random() - 0.5) * 15;
+        this.life = 1.0;
+        this.color = color || '#ffaa00';
+        this.size = Math.random() * 5 + 2;
+    }
+    update(speed) {
+        this.x += this.vx * speed; this.y += this.vy * speed;
+        this.life -= 0.04 * speed;
+    }
+    draw() {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, this.life);
+        ctx.fillStyle = this.color;
+        ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+    }
+}
+
+function createSparks(x, y, count = 10, color) {
+    for (let i = 0; i < count; i++) sparks.push(new Spark(x, y, color));
+}
+
+class Ball {
+    constructor() { this.reset(1); }
+    reset(side) {
+        this.x = side === 1 ? 150 : 650; this.y = 150;
+        this.vx = 0; this.vy = 0; this.radius = 25; 
+        this.gravity = 0.45;
+        this.isSpecial = false; this.specialType = null;
+    }
+    update() {
+        // 득점 시 슬로우 모션
+        let currentSpeed = (gameState === 'SCORE_WAIT') ? gameSpeed * 0.2 : gameSpeed;
+        
+        this.vy += this.gravity * currentSpeed;
+        this.x += this.vx * currentSpeed; 
+        this.y += this.vy * currentSpeed;
+
+        // 벽 충돌
+        if (this.x - this.radius < 0) { this.x = this.radius; this.vx *= -0.8; }
+        if (this.x + this.radius > 800) { this.x = 800 - this.radius; this.vx *= -0.8; }
+        if (this.y - this.radius < 0) { this.y = this.radius; this.vy *= -0.8; }
+
+        // 필살기 효과
+        if (this.specialType === 'spongebob') this.x += Math.sin(Date.now()/35) * 20 * currentSpeed;
+
+        // 네트 충돌
+        if (this.x + this.radius > 392 && this.x - this.radius < 408 && this.y > 360) {
+            if (this.y < 370) { this.y = 360 - this.radius; this.vy *= -0.8; }
+            else { this.vx *= -0.8; this.x = this.vx > 0 ? 408 + this.radius : 392 - this.radius; }
+        }
+        
+        // 지면 충돌 감지
+        if (this.y + this.radius > 565 && gameState === 'PLAY') {
+            if (this.x < 400) { 
+                score[1]++; lastWinner = 2; 
+                if (player1.char.ultType === 'lost') player1.ultProgress++;
+            } else { 
+                score[0]++; lastWinner = 1; 
+                if (player2.char.ultType === 'lost') player2.ultProgress++;
+            }
+            rallyCount = 0;
+            if (score[0] >= 15 || score[1] >= 15) {
+                startCeremony(); 
+            } else {
+                gameState = 'SCORE_WAIT';
+                scoreWaitTimer = 60; // 약 1초 대기 (60fps 기준)
+            }
+        }
+    }
+    draw() {
+        ctx.save();
+        ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+        ctx.clip();
+        if (ballImg.complete) ctx.drawImage(ballImg, this.x-this.radius, this.y-this.radius, this.radius*2, this.radius*2);
+        else { ctx.fillStyle = '#fff'; ctx.fill(); }
+        ctx.restore();
+        
+        ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+        ctx.strokeStyle = this.isSpecial ? '#f0f' : '#333';
+        ctx.lineWidth = 3; ctx.stroke();
+    }
+}
+
+class Player {
+    constructor(side, charIdx) { this.side = side; this.char = CHARACTERS[charIdx]; this.reset(); }
+    reset() {
+        this.w = this.char.w; this.h = this.char.h;
+        this.x = this.side === 1 ? 100 : 700 - this.w; 
+        this.y = 560 - this.h;
+        this.vx = 0; this.vy = 0; 
+        this.isJumping = false; this.isDiving = false;
+        this.scale = 1.0; this.ultProgress = 0; this.ultReady = false;
+        this.stayTimer = 0; this.perfectReceiveCount = 0;
+    }
+    update() {
+        if (gameState === 'PAUSED' || gameState === 'SCORE_WAIT') return;
+        if (gameState === 'CEREMONY') {
+            if (this === winnerObj) {
+                if (!this.isJumping) { this.vy = -12; this.isJumping = true; }
+                this.vy += 0.5 * gameSpeed; this.y += this.vy * gameSpeed;
+                if (this.y + this.h > 560) { this.y = 560 - this.h; this.vy = 0; this.isJumping = false; }
+            } else { this.scale = Math.max(0.3, this.scale - 0.008); }
+            return;
+        }
+
+        const currentSpeed = gameSpeed;
+        const moveSpeed = this.char.speed * currentSpeed;
+        const jumpPower = this.char.jump * currentSpeed;
+        const actionKey = this.side === 1 ? keys['KeyZ'] : keys['Enter'];
+
+        let left, right, up;
+        if (this.side === 1) { left = keys['KeyA']; right = keys['KeyD']; up = keys['KeyW']; }
+        else { left = keys['ArrowLeft']; right = keys['ArrowRight']; up = keys['ArrowUp']; }
+
+        if (!this.isDiving) {
+            if (left) this.vx = -moveSpeed; else if (right) this.vx = moveSpeed; else this.vx = 0;
+            if (up && !this.isJumping) { this.vy = -jumpPower; this.isJumping = true; }
+            
+            // 다이빙 리시브
+            if (actionKey && (left || right)) {
+                const dist = Math.sqrt(((this.x+this.w/2)-ball.x)**2 + ((this.y+this.h/2)-ball.y)**2);
+                if (dist > 90) {
+                    this.isDiving = true;
+                    this.vx = left ? -10 * currentSpeed : 10 * currentSpeed;
+                    setTimeout(() => this.isDiving = false, 240);
+                }
+            }
+        }
+
+        this.vy += 0.6 * currentSpeed;
+        this.x += this.vx; this.y += this.vy;
+
+        // 경계 제한
+        if (this.side === 1) this.x = Math.max(0, Math.min(this.x, 390 - this.w));
+        else this.x = Math.max(410, Math.min(this.x, 800 - this.w));
+        if (this.y + this.h > 560) { this.y = 560 - this.h; this.vy = 0; this.isJumping = false; }
+
+        // 카렌 필살기 충전 (제자리)
+        if (this.char.id === 'karen' && Math.abs(this.vx) < 0.1 && Math.abs(this.vy) < 0.1) {
+            this.stayTimer++; if (this.stayTimer > 250) this.ultReady = true;
+        } else this.stayTimer = 0;
+
+        // 충돌 판정
+        const dx = (this.x + this.w/2) - ball.x;
+        const dy = (this.y + this.h/2) - ball.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+
+        if (dist < 90) {
+            if (actionKey) {
+                createSparks(ball.x, ball.y, 15, this.ultReady ? '#ff00ff' : '#ffff00');
+                this.handleSpike();
+            }
+            else this.handleBump();
+        }
+
+        this.ultReady = (this.ultProgress >= this.char.targetUlt);
+        this.updateUI();
+    }
+    handleSpike() {
+        rallyCount++;
+        if (player1.char.ultType === 'rally' || player2.char.ultType === 'rally') {
+            if (rallyCount >= 5) { player1.ultProgress++; player2.ultProgress++; }
+        }
+
+        let baseVX = this.side === 1 ? 14 : -14;
+        let baseVY = -5;
+
+        let left, right, up, down;
+        if (this.side === 1) { left=keys['KeyA']; right=keys['KeyD']; up=keys['KeyW']; down=keys['KeyS']; }
+        else { left=keys['ArrowLeft']; right=keys['ArrowRight']; up=keys['ArrowUp']; down=keys['ArrowDown']; }
+
+        if (right) baseVX = 20; if (left) baseVX = -20;
+        if (down) baseVY = 18; if (up) baseVY = -12;
+
+        ball.vx = baseVX * gameSpeed; ball.vy = baseVY * gameSpeed;
+        // 자기 히트박스 탈출 보정
+        ball.x += ball.vx * 2; ball.y += ball.vy * 2; 
+
+        if (this.ultReady) this.triggerSpecial();
+        else if (this.char.ultType === 'count') this.ultProgress++;
+    }
+    handleBump() {
+        // 공이 위로 시원하게 튀도록 반발력 강화
+        ball.vx = (ball.x - (this.x + this.w/2)) * 0.4;
+        ball.vy = -16 * gameSpeed; // 위로 높게 튀게 함
+        ball.y -= 40; // 캐릭터에 겹치지 않게 밀어냄
+
+        if (this.char.id === 'squidward' && this.char.ultType === 'receive') this.ultProgress++;
+        if (this.char.ultType === 'perfect' && ball.y < 350) {
+            this.perfectReceiveCount++;
+            if (this.perfectReceiveCount >= 2) { this.ultProgress++; this.perfectReceiveCount = 0; }
+        }
+        if (this.char.ultType === 'counter' && ball.isSpecial) this.ultProgress += 2;
+    }
+    triggerSpecial() {
+        this.ultProgress = 0; this.ultReady = false;
+        ball.isSpecial = true; ball.specialType = this.char.id;
+        
+        if (this.char.id === 'patrick') { ball.vx = (this.side === 1 ? 5 : -5); ball.vy = 25; }
+        if (this.char.id === 'sandy') { ball.vx *= 2.4; ball.vy *= 2.0; }
+        if (this.char.id === 'plankton') {
+            const target = this.side === 1 ? player2 : player1;
+            const tx = (target.x + target.w/2) - ball.x;
+            const ty = (target.y + target.h/2) - ball.y;
+            ball.vx = tx * 0.15; ball.vy = ty * 0.15;
+        }
+        if (this.char.id === 'karen') { ball.x = this.side === 1 ? 720 : 80; ball.y = 120; ball.vy = 14; }
+        if (this.char.id === 'krabs') ball.vx *= 1.5;
+
+        setTimeout(() => { ball.isSpecial = false; ball.specialType = null; }, 1300);
+    }
+    updateUI() {
+        const fill = document.getElementById(`p${this.side}-ult-fill`);
+        const text = document.getElementById(`p${this.side}-ult-text`);
+        const p = Math.min(100, (this.ultProgress / this.char.targetUlt) * 100);
+        fill.style.width = `${p}%`;
+        text.innerText = this.ultReady ? "SPECIAL READY!!" : "CHARGING...";
+        fill.style.background = this.ultReady ? "linear-gradient(90deg, #ff00ff, #00ffff)" : "linear-gradient(90deg, #ff0, #f80)";
+    }
+    draw() {
+        ctx.save();
+        ctx.translate(this.x + this.w/2, this.y + this.h/2);
+        if (this.isDiving) ctx.rotate(this.side === 1 ? -0.5 : 0.5);
+        ctx.scale(this.scale, this.scale);
+        const img = images[this.char.id];
+        if (img && img.complete) ctx.drawImage(img, -this.w/2, -this.h/2, this.w, this.h);
+        else { ctx.fillStyle = this.char.color; ctx.fillRect(-this.w/2, -this.h/2, this.w, this.h); }
+        ctx.restore();
+    }
+}
+
+function startCeremony() {
+    gameState = 'CEREMONY';
+    ceremonyTimer = 180; 
+    winnerObj = score[0] >= 15 ? player1 : player2;
+}
+
+function initGame() {
+    gameSpeed = parseFloat(document.getElementById('speed-slider').value);
+    score = [0, 0]; rallyCount = 0;
+    ball = new Ball();
+    player1 = new Player(1, p1Sel);
+    player2 = new Player(2, p2Sel);
+    document.getElementById('char-select').classList.add('hidden');
+    document.getElementById('in-game-ui').classList.remove('hidden');
+    gameState = 'PLAY';
+}
+
+function resetPlayers() { player1.reset(); player2.reset(); }
+
+function showCharSelect() {
+    document.getElementById('main-menu').classList.add('hidden');
+    document.getElementById('char-select').classList.remove('hidden');
+    gameState = 'SELECT';
+    renderGrid();
+}
+
+function backToMenu() {
+    gameState = 'MENU';
+    document.getElementById('in-game-ui').classList.add('hidden');
+    document.getElementById('pause-overlay').classList.add('hidden');
+    document.getElementById('game-over').classList.add('hidden');
+    document.getElementById('main-menu').classList.remove('hidden');
+    p1Ready = p2Ready = false;
+    document.getElementById('p1-status').innerText = "1P: 선택 중... (WASD+Z)";
+    document.getElementById('p2-status').innerText = "2P: 선택 중... (방향키+Enter)";
+}
+
+function showInfo() {
+    const list = document.getElementById('skill-list');
+    list.innerHTML = CHARACTERS.map(c => `<div><strong>${c.name}:</strong> ${c.skill}</div>`).join('');
+    document.getElementById('info-screen').classList.remove('hidden');
+}
+function hideInfo() { document.getElementById('info-screen').classList.add('hidden'); }
+
+function renderGrid() {
+    const grid = document.getElementById('char-grid'); grid.innerHTML = '';
+    CHARACTERS.forEach((c, idx) => {
+        const card = document.createElement('div');
+        card.className = `char-card ${p1Sel===idx?'p1-selected':''} ${p2Sel===idx?'p2-selected':''}`;
+        card.innerHTML = `<img src="${c.img}"><p class="text-[10px] mt-1">${c.name}</p>`;
+        grid.appendChild(card);
+    });
+}
+
+window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    if (e.code === 'Escape') {
+        if (gameState === 'PLAY') { gameState = 'PAUSED'; document.getElementById('pause-overlay').classList.remove('hidden'); }
+        else if (gameState === 'PAUSED') { gameState = 'PLAY'; document.getElementById('pause-overlay').classList.add('hidden'); }
+        else if (gameState === 'SELECT') backToMenu();
+    }
+    if (gameState === 'SELECT') {
+        if (!p1Ready) {
+            if (e.code === 'KeyW') p1Sel = (p1Sel-4+8)%8; if (e.code === 'KeyS') p1Sel = (p1Sel+4)%8;
+            if (e.code === 'KeyA') p1Sel = (p1Sel-1+8)%8; if (e.code === 'KeyD') p1Sel = (p1Sel+1)%8;
+            if (e.code === 'KeyZ') { p1Ready = true; document.getElementById('p1-status').innerText = "1P: READY!"; }
+        }
+        if (!p2Ready) {
+            if (e.code === 'ArrowUp') p2Sel = (p2Sel-4+8)%8; if (e.code === 'ArrowDown') p2Sel = (p2Sel+4)%8;
+            if (e.code === 'ArrowLeft') p2Sel = (p2Sel-1+8)%8; if (e.code === 'ArrowRight') p2Sel = (p2Sel+1)%8;
+            if (e.code === 'Enter') { p2Ready = true; document.getElementById('p2-status').innerText = "2P: READY!"; }
+        }
+        renderGrid(); if (p1Ready && p2Ready) setTimeout(initGame, 500);
+    }
+});
+window.addEventListener('keyup', e => keys[e.code] = false);
+
+function loop() {
+    ctx.clearRect(0, 0, 800, 600);
+    ctx.fillStyle = '#ffffff88'; ctx.fillRect(397, 380, 6, 180); // Net
+    ctx.fillStyle = '#D2B48C'; ctx.fillRect(0, 560, 800, 40); // Ground
+
+    if (gameState !== 'MENU' && gameState !== 'SELECT') {
+        ball.update(); player1.update(); player2.update();
+        
+        let currentLoopSpeed = (gameState === 'SCORE_WAIT') ? gameSpeed * 0.2 : gameSpeed;
+        sparks = sparks.filter(s => s.life > 0);
+        sparks.forEach(s => { s.update(currentLoopSpeed); s.draw(); });
+
+        ball.draw(); player1.draw(); player2.draw();
+        
+        ctx.fillStyle = "#333"; ctx.font = "bold 48px Jua"; ctx.textAlign = "center";
+        ctx.fillText(`${score[0]} : ${score[1]}`, 400, 65);
+
+        if (gameState === 'SCORE_WAIT') {
+            scoreWaitTimer--;
+            if (scoreWaitTimer <= 0) {
+                gameState = 'PLAY';
+                ball.reset(lastWinner);
+                resetPlayers();
+            }
+        }
+
+        if (gameState === 'CEREMONY') {
+            ceremonyTimer--;
+            if (ceremonyTimer <= 0) {
+                gameState = 'FINISH';
+                document.getElementById('winner-text').innerText = `${winnerObj.char.name} 승리!`;
+                document.getElementById('game-over').classList.remove('hidden');
+            }
+        }
+    }
+    requestAnimationFrame(loop);
+}
+window.onload = loop;
+</script>
+</body>
+</html>
